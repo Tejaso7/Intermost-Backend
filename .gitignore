@@ -136,3 +136,7 @@ media/
 
 # Local development
 *.local
+# Node (if accidentally added)
+node_modules/
+package.json
+package-lock.json
