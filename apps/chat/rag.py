@@ -10,40 +10,64 @@ import logging
 from datetime import datetime
 from bson import ObjectId
 from django.conf import settings
+import numpy as np
 
-# LangChain imports
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
+# Google Gemini SDK (new)
+from google import genai
 
 from apps.mongodb import get_collection
 
 logger = logging.getLogger(__name__)
 
-# Get API key
+# Get API key and create client
 GEMINI_API_KEY = getattr(settings, 'GEMINI_API_KEY', '') or os.environ.get('GEMINI_API_KEY', '')
+client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 
-def get_embeddings_model():
-    """Get Google Gemini embeddings model."""
-    if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY not configured")
-    
-    return GoogleGenerativeAIEmbeddings(
-        model="embedding-001",
-        google_api_key=GEMINI_API_KEY,
-    )
+def get_embedding(text: str) -> Optional[List[float]]:
+    """Get embedding for a text using Gemini."""
+    if not client:
+        logger.error("Gemini client not initialized")
+        return None
+    try:
+        result = client.models.embed_content(
+            model="gemini-embedding-exp-03-07",
+            contents=text
+        )
+        return result.embeddings[0].values
+    except Exception as e:
+        logger.error(f"Error generating embedding: {e}")
+        return None
+
+
+def get_query_embedding(text: str) -> Optional[List[float]]:
+    """Get embedding for a query using Gemini."""
+    if not client:
+        logger.error("Gemini client not initialized")
+        return None
+    try:
+        result = client.models.embed_content(
+            model="gemini-embedding-exp-03-07",
+            contents=text
+        )
+        return result.embeddings[0].values
+    except Exception as e:
+        logger.error(f"Error generating query embedding: {e}")
+        return None
 
 
 def chunk_document(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[str]:
     """Split document into chunks for embedding."""
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        length_function=len,
-        separators=["\n\n", "\n", ". ", " ", ""]
-    )
-    return splitter.split_text(text)
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end]
+        chunks.append(chunk)
+        start = end - chunk_overlap
+        if start < 0:
+            start = 0
+    return [c for c in chunks if c.strip()]  # Remove empty chunks
 
 
 def compute_hash(text: str) -> str:
@@ -59,13 +83,6 @@ class RAGDocumentStore:
     def __init__(self):
         self.documents_collection = get_collection('rag_documents')
         self.chunks_collection = get_collection('rag_chunks')
-        self._embeddings = None
-    
-    @property
-    def embeddings(self):
-        if self._embeddings is None:
-            self._embeddings = get_embeddings_model()
-        return self._embeddings
     
     def add_document(
         self,
@@ -104,15 +121,20 @@ class RAGDocumentStore:
         chunks = chunk_document(content)
         
         # Generate embeddings for chunks
-        try:
-            chunk_embeddings = self.embeddings.embed_documents(chunks)
-        except Exception as e:
-            logger.error(f"Error generating embeddings: {e}")
-            raise
+        chunk_embeddings = []
+        for chunk in chunks:
+            embedding = get_embedding(chunk)
+            if embedding:
+                chunk_embeddings.append(embedding)
+            else:
+                logger.warning(f"Failed to generate embedding for chunk, skipping")
+                chunk_embeddings.append(None)
         
         # Store chunks with embeddings
         chunk_docs = []
         for i, (chunk_text, embedding) in enumerate(zip(chunks, chunk_embeddings)):
+            if embedding is None:
+                continue  # Skip chunks without embeddings
             chunk_doc = {
                 '_id': ObjectId(),
                 'document_id': doc_id,
@@ -201,10 +223,9 @@ class RAGDocumentStore:
         Returns top_k most relevant chunks.
         """
         # Generate query embedding
-        try:
-            query_embedding = self.embeddings.embed_query(query)
-        except Exception as e:
-            logger.error(f"Error generating query embedding: {e}")
+        query_embedding = get_query_embedding(query)
+        if not query_embedding:
+            logger.error("Failed to generate query embedding")
             return []
         
         # Get all chunks (for small datasets, we do in-memory similarity)
@@ -231,8 +252,6 @@ class RAGDocumentStore:
             return []
         
         # Calculate cosine similarity
-        import numpy as np
-        
         query_vec = np.array(query_embedding)
         similarities = []
         
