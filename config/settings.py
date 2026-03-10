@@ -20,7 +20,7 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 # Security Settings
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-change-this-in-production')
 DEBUG = env('DEBUG', default=False)
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1',"https://smooth-drake-horribly.ngrok-free.app/"])
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
 
 # Application definition
 INSTALLED_APPS = [
@@ -169,10 +169,16 @@ SIMPLE_JWT = {
 }
 
 # CORS Configuration
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://smooth-drake-horribly.ngrok-free.app",
+CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+])
+CORS_ALLOWED_ORIGINS += [
+    'https://intermost.in',
+    'https://www.intermost.in',
+    'https://intermost.eu',
+    'https://www.intermost.eu',
+    'https://intermost.netlify.app',
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only in development
