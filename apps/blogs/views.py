@@ -36,7 +36,12 @@ def create_slug(title):
 
 class BlogListCreateView(APIView):
     """List and create blogs."""
-    permission_classes = [AllowAny]
+    
+    def get_permissions(self):
+        """Allow read for all, write for admins only."""
+        if self.request.method == 'POST':
+            return [IsAdminUser()]
+        return [AllowAny()]
     
     def get(self, request):
         collection = get_collection('blogs')

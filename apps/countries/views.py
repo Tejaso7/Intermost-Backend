@@ -43,7 +43,12 @@ class CountryListCreateView(APIView):
     GET: List all countries
     POST: Create a new country (Admin only)
     """
-    permission_classes = [AllowAny]  # Allow all for development
+    
+    def get_permissions(self):
+        """Set permissions based on request method."""
+        if self.request.method == 'POST':
+            return [IsAdminUser()]
+        return [AllowAny()]
     
     def get(self, request):
         """List all active countries."""

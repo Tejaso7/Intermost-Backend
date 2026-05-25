@@ -28,7 +28,12 @@ def serialize_doc(doc):
 
 class InquiryListCreateView(APIView):
     """List and create inquiries."""
-    permission_classes = [AllowAny]
+    
+    def get_permissions(self):
+        """Allow anyone to submit, admins can view all."""
+        if self.request.method == 'GET':
+            return [IsAdminUser()]
+        return [AllowAny()]
     
     def get(self, request):
         """List all inquiries (Admin only)."""
